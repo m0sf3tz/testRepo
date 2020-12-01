@@ -40,7 +40,7 @@ int getRandom()
   return (data[0] & 0xf);
 }
 
-void  main(void)
+int main(void)
 {
      int            rc = -1;
      void           *map_start = NULL;
@@ -59,7 +59,7 @@ void  main(void)
 
      // Create a structure out of this new "memory"
      sharedMmap_t * smap = (sharedMmap_t*)map_start;
-     memset(smap,sizeof(sharedMmap_t),0);
+     memset(smap, 0, sizeof(sharedMmap_t));
 
      // Create a semaphore to be shared between processes (CBBUM(s) + BBUM)
      rc = sem_init(&smap->pidArrSem,       // Area in memory that the shared semaphore exists
@@ -90,7 +90,6 @@ void  main(void)
      if(child_pid){
        while(1)
        {
-         int wstatus;
          int reaped_child_pid = wait(NULL);
 
           // check to see if we had an error on wait 
@@ -143,28 +142,32 @@ void  main(void)
 
      // CBBUMs will run this code, register their PIDs to the global structure
      // which is created in the MMAP, run for a bit, then exit.
-     // only CBBUMS will run this code,
-     sem_wait(&smap->pidArrSem);
-     int cbbum_id = 0;
+     {
+       sem_wait(&smap->pidArrSem);
+       int cbbum_id = 0;
 
-     // find first cbbum which is not initialized.
-     while(smap->cbbum_instantiated[cbbum_id]){
-      cbbum_id++;
+       // find first cbbum which is not initialized.
+       while(smap->cbbum_instantiated[cbbum_id]){
+        cbbum_id++;
+       }
+
+       // Claim our spot in "cbbum_intantiated", this will also
+       // set the unique ID of the CBBUM, also let update the pidArr
+       // such that our parent knows our PID.
+       smap->cbbum_instantiated[cbbum_id] = true;
+       smap->pidArr[cbbum_id] = getpid();
+
+       sem_post(&smap->pidArrSem);
+
+       // "worker loop of CBBUM" ; TBD
+       while(1){
+          int timeToSleep = getRandom();
+          printf("CBBUM with PID == %d, id == %d will sleep for %d seconds then exit \n", getpid(), cbbum_id, timeToSleep);
+          sleep(timeToSleep);
+
+          exit(0);
+       }
      }
-
-     // Claim our spot in "cbbum_intantiated", this will also
-     // set the unique ID of the CBBUM, also let update the pidArr
-     // such that our parent knows our PID.
-     smap->cbbum_instantiated[cbbum_id] = true;
-     smap->pidArr[cbbum_id] = getpid();
-
-     sem_post(&smap->pidArrSem);
-
-     while(1){
-        int timeToSleep = getRandom();
-        printf("CBBUM with PID == %d, id == %d will sleep for %d seconds then exit \n", getpid(), cbbum_id, timeToSleep);
-        sleep(timeToSleep);
-
-        exit(0);
-     }
+     
+  return 1;
 }
