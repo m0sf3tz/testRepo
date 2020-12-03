@@ -18,8 +18,6 @@
 #define SEM_PROCESS_SHARED    (1)
 #define SEMAPHORE_COUNT_MUTEX (1)
 
-#define TLE printf
-
 // This structure is shared between the BBUM and CCBUM(s).
 // It resides in shared memory region created by mmap.
 typedef struct 
