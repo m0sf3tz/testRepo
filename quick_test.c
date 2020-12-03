@@ -18,6 +18,8 @@
 #define SEM_PROCESS_SHARED    (1)
 #define SEMAPHORE_COUNT_MUTEX (1)
 
+#define TLE printf
+
 // This structure is shared between the BBUM and CCBUM(s).
 // It resides in shared memory region created by mmap.
 typedef struct 
@@ -77,7 +79,7 @@ int main
     if ( map_start == MAP_FAILED) 
     {
         TLE( "Failed to initialize semaphore" );
-        exit(0);
+        exit( -1 );
     }
 
     sharedMmap_t * smap_p = (sharedMmap_t*)map_start;
@@ -94,7 +96,7 @@ int main
     if( rc == -1 )
     {
         TLE( "Failed to initialize semaphore" );
-        exit( 0 );
+        exit( -1 );
     }
 
     //Spawn multiple CBBUM(s) processes
@@ -107,6 +109,12 @@ int main
         if( pid == 0 )
         {
              break;
+        }
+        if ( pid == -1 )
+        {
+          // Failed to create child process.
+          TLE( "Failed to create child process, errno=%s", strerror( errno ));
+          exit( -1 ); 
         }
     }
 
@@ -134,7 +142,7 @@ int main
                   {
                       TLE( "unexpected error on wait, errno==%s \n",
                           strerror( errno ) );
-                      exit( -2 );
+                      exit( -1 );
                   }
              }
 
@@ -166,10 +174,17 @@ int main
              sem_post( &smap_p->pid_arrSem );
 
              // Fork a new CBBUM
-             if( fork() == 0 )
+             pid = fork();
+             if( pid == 0 )
              {
-               // CBBUM process, break and enter CBBUM loop
-               break;
+                  // CBBUM process, break and enter CBBUM loop
+                  break;
+             }
+             if ( pid == -1 )
+             {
+                  // Failed to create child process.
+                  TLE( "Failed to create child process, errno=%s", strerror( errno ));
+                  exit( -1 ); 
              }
          }
     }
