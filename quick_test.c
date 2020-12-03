@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
-#include <fcntl.h>            /* Defines O_* constants */
-#include <sys/stat.h>         /* Defines mode constants */
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <stdint.h>
 #include <semaphore.h>
@@ -10,164 +10,206 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <errno.h>
-#include <stdbool.h> 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#define NUMBER_OF_CBBUM       (3)
+#define NUMBER_OF_CBBUM       (3) //TODO: don't hardcode, tbd
 #define SEM_PROCESS_SHARED    (1)
 #define SEMAPHORE_COUNT_MUTEX (1)
 
 // This structure is shared between the BBUM and CCBUM(s).
 // It resides in shared memory region created by mmap.
-typedef struct {
-  sem_t pidArrSem;                           // Semaphore to this structure
-  bool  cbbum_instantiated[NUMBER_OF_CBBUM]; // Right after a CBBUM process is started It will read this array,
-                                             // it will find the first index which is not "taken" and assume that CBBUM
-                                             // Identity.This way at boot each CBBUM will dynamically be given a unique Identity.
-  int   pidArr[NUMBER_OF_CBBUM];             // Index of this array is a CBBUM, each index will hold the PID of the CBBUM with that ID.
+typedef struct 
+{
+  sem_t pid_arrSem;                          // Semaphore to this structure
+  bool  cbbum_instantiated[NUMBER_OF_CBBUM]; // Right after a CBBUM process is
+                                             // started It will read this array,
+                                             // it will find the first index
+                                             // which is not "taken" and assume
+                                             // that CBBUMs identity.
+                                             // This way at after each CBBUM
+                                             // process is forked, it will
+                                             // dynamically be given a
+                                             // unique Identity.
+  int   pid_arr[NUMBER_OF_CBBUM];            // Index of this array is a CBBUM,
+                                             // each index will hold the PID of
+                                             // the CBBUM with that ID.
 } sharedMmap_t;
 
 
-// Not a production function, just for a test.
-int getRandom()
+// Not a production function, just for a brief test.
+// returns a random number between 0 and 0xF
+int get_random
+(
+void
+)
 {
-  uint8_t data[1];
+  uint8_t r_data;
   FILE *fp;
-  fp = fopen("/dev/urandom", "r");
-  fread(&data, 1, 1, fp);
-  fclose(fp);
-  return (data[0] & 0xf);
+  fp = fopen( "/dev/urandom", "r" );
+  fread( &r_data, 1, 1, fp );
+  fclose( fp );
+  return r_data & 0xf;
 }
 
-int main(void)
+int main
+(
+    int         argc,
+    const char *argv[]
+)
 {
-     int            rc = -1;
-     void           *map_start = NULL;
-     const size_t   MEM_MAP_SIZE  = sizeof(sharedMmap_t);
+    int            rc = -1;
+    void           *map_start = NULL;
+    const size_t   MEM_MAP_SIZE  = sizeof( sharedMmap_t );
 
-     // Initialize a shared memory region which will be passed down to child processes (using fork()),
-     // this will let us share a common structure between all the CBBUM(s) and singular BBUM.
-     map_start = mmap(NULL,
-                      MEM_MAP_SIZE,
-                      PROT_READ | PROT_WRITE ,            // READ and WRITE permissions set on the region.
-                      MAP_SHARED | MAP_ANONYMOUS,         // Share the mapping between child processes, anonymous means that the
-                                                          // mapping has no "name"
-                      -1,                                 // fd       (don't care, can be "0", some implementations prefer "-1")
-                      0                                   // off_t    (don't care)
-                      );
+    // Initialize a shared memory region which will be passed down to child
+    // processes (using fork()), this will let us share a common structure
+    // between all the CBBUM(s) and single BBUM.
+    map_start = mmap(NULL,
+                     MEM_MAP_SIZE,
+                     PROT_READ  | PROT_WRITE,
+                     MAP_SHARED | MAP_ANONYMOUS, // Share the mapping with
+                                                 // child processes.
+                     -1,                         // fd       (don't care)
+                     0                           // off_t    (don't care)
+                     );
+    if ( map_start == MAP_FAILED) 
+    {
+        //TLE( "Failed to initialize semaphore" );
+        exit(0);
+    }
 
-     // Create a structure out of this new "memory"
-     sharedMmap_t * smap = (sharedMmap_t*)map_start;
-     memset(smap, 0, sizeof(sharedMmap_t));
+    sharedMmap_t * smap_p = (sharedMmap_t*)map_start;
+    memset( smap_p, 0, sizeof(sharedMmap_t) );
 
-     // Create a semaphore to be shared between processes (CBBUM(s) + BBUM)
-     rc = sem_init(&smap->pidArrSem,       // Area in memory that the shared semaphore exists
-                   SEM_PROCESS_SHARED,     // If this value is non-zero, then the semaphore is to be shared between processes (our case);
-                   SEMAPHORE_COUNT_MUTEX   // Semaphore count, 1 == mutex (our case);
-                   );
-     if(rc == -1){
-         printf("Failed to create anon-semaphore \n");
-         exit(0);
-     }
+    // Create a semaphore to be shared between processes (CBBUM(s) + BBUM)
+    rc = sem_init( &smap_p->pid_arrSem,
+                   SEM_PROCESS_SHARED,    // If this value is non-zero,
+                                          // then the semaphore is to be shared
+                                          // between processes (our case);
+                  SEMAPHORE_COUNT_MUTEX   // Semaphore count,
+                                          // 1 == mutex (our case);
+                  );
+    if( rc == -1 )
+    {
+        //TLE( "Failed to initialize semaphore" );
+        exit( 0 );
+    }
 
-     //Spawn multiple CBBUM(s)
-     pid_t child_pid;
-     for(int i = 0; i < NUMBER_OF_CBBUM; i++){
-        child_pid = fork();
+    //Spawn multiple CBBUM(s) processes
+    pid_t pid;
+    for( int i = 0; i < NUMBER_OF_CBBUM; i++ )
+    {
+        pid = fork();
 
-        //if child, break;
-        if(child_pid == 0)
+        //if child process, break and being CBBUM work;
+        if( pid == 0 )
         {
-          break;
+             break;
         }
-     }
+    }
 
-     // BBUM will run this code, it will monitor the children that it started.
-     // If any of the CBBUM(s) crash (exit), it will restart that particular CBBUM.
-     // This code needs to be extended to include more rigorous logging.
-     // TODO: handle the case that BBUM crashes
-     if(child_pid){
-       while(1)
-       {
-         int reaped_child_pid = wait(NULL);
-
-          // check to see if we had an error on wait 
-          if(reaped_child_pid  == -1)
-          {
-             if(errno == ECHILD)
-             {
-              printf("unexpected, should have spawned the CBBUM(s). \n");
-              exit(-1);
-             }
-             else
-             {
-              printf("unexpected error on wait! errno ==  %s \n", strerror(errno));
-              exit(-2);
-             }
-         }
-
-         // get the unique ID of the CBUM that just exited, we can do this by
-         // doing a reverse search on the pidArr since it is indexed with the ID of 
-         // the CBBUMs. this is not "Ideal" - but since the number of CBBUMs is small it wil
-         // do.
-
-         sem_wait(&smap->pidArrSem);
-         int exited_cbbum_id = -1;
-
-         for(int i = 0; i < NUMBER_OF_CBBUM; i++)
+    // BBUM will run this code, it will monitor the children that it started.
+    // If any of the CBBUM(s) crash (exit), it will restart that particular
+    // CBBUM. This code needs to be extended to include more rigorous logging.
+    // and negative case handling.
+    // TODO: handle the case that BBUM crashes
+    if( pid )
+    {
+         while( 1 )
          {
-           if(reaped_child_pid == smap->pidArr[i])
-           {
-              exited_cbbum_id = i;
-           }
+             // will block till a child process exits and is read to be reaped.
+             int reaped_pid = wait( NULL );
+
+             // check to see if we had an error on wait
+             if( reaped_pid  == -1 )
+             {
+                  if( errno == ECHILD )
+                  {
+                      printf( "unexpected, should have spawned the CBBUM(s). \n" );
+                      exit( -1 );
+                  }
+                  else
+                  {
+                      printf( "unexpected error on wait, errno==%s \n",
+                          strerror( errno ) );
+                      exit( -2 );
+                  }
+             }
+
+             // get the unique ID of the CBUM that just exited, we can do this by
+             // doing a reverse search on the pid_arr since it is indexed with the
+             // ID of the CBBUMs.
+             sem_wait( &smap_p->pid_arrSem );
+             int exited_cbbum_id = -1;
+
+             for( int i = 0; i < NUMBER_OF_CBBUM; i++ )
+             {
+                  if( reaped_pid == smap_p->pid_arr[i] )
+                  {
+                       exited_cbbum_id = i;
+                  }
+             }
+             if ( exited_cbbum_id == -1 )
+             {
+                  printf( "Child process exited, but unable to match to CBBUM id" );
+             }
+
+             // Mark this CBBUM as "non-instantiated" and start a new process
+             // to assume the exited CBBUM identity.
+             smap_p->cbbum_instantiated[exited_cbbum_id] = false;
+
+             printf( "CBBUM %d exited!, had PID == %d, Will restart this CBBUM \n",
+             exited_cbbum_id, smap_p->pid_arr[exited_cbbum_id] );
+            
+             sem_post( &smap_p->pid_arrSem );
+
+             // Fork a new CBBUM
+             if( fork() == 0 )
+             {
+               // CBBUM process, break and enter CBBUM loop
+               break;
+             }
          }
-         //TODO handle case that we don't find exited_cbbum_id
+    }
 
-         // Mark this CBBUM as "non-instantiated", such that it is restarted.
-         smap->cbbum_instantiated[exited_cbbum_id] = false;
-         sem_post(&smap->pidArrSem);
+    // CBBUMs will run this code, register their PIDs to the global structure
+    // which is created in the MMAP, run for a bit, then exit.
+    {
+         sem_wait( &smap_p->pid_arrSem );
+         int cbbum_id = 0;
 
-         printf("CBBUM %d exited!, had PID == %d, Will restart this BBUM \n", exited_cbbum_id, smap->pidArr[exited_cbbum_id]);
-
-         // Fork a new CBBUM
-         // TODO: handle negative case (fork returns -1)
-         if(fork() == 0)
+         // find first CBBUM which is not initialized.
+         while( smap_p->cbbum_instantiated[cbbum_id]
+             && cbbum_id != NUMBER_OF_CBBUM )
          {
-           // CBBUM process, will break and enter CBBUM loop
-           break;
+              cbbum_id++;
          }
-       }
-     }
+         if ( cbbum_id == NUMBER_OF_CBBUM)
+         {
+              printf( "CBBUM process started but failed to assume unique ID \n" );
+              sem_post( &smap_p->pid_arrSem );
+              exit( -1 );
+         }
 
-     // CBBUMs will run this code, register their PIDs to the global structure
-     // which is created in the MMAP, run for a bit, then exit.
-     {
-       sem_wait(&smap->pidArrSem);
-       int cbbum_id = 0;
+         // Claim our spot in "cbbum_intantiated", this will also
+         // set the unique ID of the CBBUM, also update the pid_arr
+         // such that our parent knows the new CBBUM child PID.
+         smap_p->cbbum_instantiated[cbbum_id] = true;
+         smap_p->pid_arr[cbbum_id] = getpid();
 
-       // find first cbbum which is not initialized.
-       while(smap->cbbum_instantiated[cbbum_id]){
-        cbbum_id++;
-       }
+         sem_post( &smap_p->pid_arrSem );
 
-       // Claim our spot in "cbbum_intantiated", this will also
-       // set the unique ID of the CBBUM, also let update the pidArr
-       // such that our parent knows our PID.
-       smap->cbbum_instantiated[cbbum_id] = true;
-       smap->pidArr[cbbum_id] = getpid();
-
-       sem_post(&smap->pidArrSem);
-
-       // "worker loop of CBBUM" ; TBD
-       while(1){
-          int timeToSleep = getRandom();
-          printf("CBBUM with PID == %d, id == %d will sleep for %d seconds then exit \n", getpid(), cbbum_id, timeToSleep);
-          sleep(timeToSleep);
-
-          exit(0);
-       }
-     }
-     
-  return 1;
+         // "worker loop of CBBUM" ; TBD
+         while( 1 )
+         {
+              int timeToSleep = get_random();
+              printf( "CBBUM with PID == %d, id == %d will sleep for \
+                   %d seconds then exit \n", getpid(), cbbum_id, timeToSleep );
+              sleep( timeToSleep );
+              exit( 0 );
+        }
+    }
+    return 1;
 }
