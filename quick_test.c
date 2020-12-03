@@ -76,7 +76,7 @@ int main
                      );
     if ( map_start == MAP_FAILED) 
     {
-        //TLE( "Failed to initialize semaphore" );
+        TLE( "Failed to initialize semaphore" );
         exit(0);
     }
 
@@ -93,7 +93,7 @@ int main
                   );
     if( rc == -1 )
     {
-        //TLE( "Failed to initialize semaphore" );
+        TLE( "Failed to initialize semaphore" );
         exit( 0 );
     }
 
@@ -127,12 +127,12 @@ int main
              {
                   if( errno == ECHILD )
                   {
-                      printf( "unexpected, should have spawned the CBBUM(s). \n" );
+                      TLE( "unexpected, should have spawned the CBBUM(s)." );
                       exit( -1 );
                   }
                   else
                   {
-                      printf( "unexpected error on wait, errno==%s \n",
+                      TLE( "unexpected error on wait, errno==%s \n",
                           strerror( errno ) );
                       exit( -2 );
                   }
@@ -153,14 +153,14 @@ int main
              }
              if ( exited_cbbum_id == -1 )
              {
-                  printf( "Child process exited, but unable to match to CBBUM id" );
+                  TLE( "Child process exited, but unable to match to CBBUM id" );
              }
 
              // Mark this CBBUM as "non-instantiated" and start a new process
              // to assume the exited CBBUM identity.
              smap_p->cbbum_instantiated[exited_cbbum_id] = false;
 
-             printf( "CBBUM %d exited!, had PID == %d, Will restart this CBBUM \n",
+             TLE( "CBBUM %d exited!, had PID == %d, Will restart this CBBUM",
              exited_cbbum_id, smap_p->pid_arr[exited_cbbum_id] );
             
              sem_post( &smap_p->pid_arrSem );
@@ -188,7 +188,7 @@ int main
          }
          if ( cbbum_id == NUMBER_OF_CBBUM)
          {
-              printf( "CBBUM process started but failed to assume unique ID \n" );
+              TLE( "CBBUM process started but failed to assume unique ID" );
               sem_post( &smap_p->pid_arrSem );
               exit( -1 );
          }
@@ -205,7 +205,7 @@ int main
          while( 1 )
          {
               int timeToSleep = get_random();
-              printf( "CBBUM with PID == %d, id == %d will sleep for \
+              TLE( "CBBUM with PID == %d, id == %d will sleep for \
                    %d seconds then exit \n", getpid(), cbbum_id, timeToSleep );
               sleep( timeToSleep );
               exit( 0 );
